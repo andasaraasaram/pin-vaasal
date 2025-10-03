@@ -33,9 +33,15 @@ app.post('/api/signup', async (req, res) => {
       });
     }
 
+    // Configure email confirmation URL
+    const redirectUrl = `${req.headers.origin || 'http://localhost:4200'}/verify-email`;
+
     const { data, error } = await supabase.auth.signUp({
       email,
-      password
+      password,
+      options: {
+        emailRedirectTo: redirectUrl
+      }
     });
 
     if (error) {
@@ -45,13 +51,21 @@ app.post('/api/signup', async (req, res) => {
       });
     }
 
+    // Check if email confirmation is required
+    const needsVerification = data.user && !data.user.email_confirmed_at;
+
     res.json({
       success: true,
+      needsVerification: needsVerification,
       user: {
         id: data.user.id,
-        email: data.user.email
+        email: data.user.email,
+        emailConfirmed: !!data.user.email_confirmed_at
       },
-      token: data.session?.access_token
+      token: data.session?.access_token,
+      message: needsVerification 
+        ? 'Please check your email to verify your account' 
+        : 'Account created successfully'
     });
   } catch (error) {
     console.error('Signup error:', error);
@@ -80,9 +94,27 @@ app.post('/api/login', async (req, res) => {
     });
 
     if (error) {
+      // Check if error is due to unverified email
+      if (error.message.includes('Email not confirmed')) {
+        return res.status(401).json({
+          success: false,
+          needsVerification: true,
+          message: 'Please verify your email before logging in'
+        });
+      }
+
       return res.status(401).json({
         success: false,
         message: error.message
+      });
+    }
+
+    // Check if email is verified
+    if (!data.user.email_confirmed_at) {
+      return res.status(401).json({
+        success: false,
+        needsVerification: true,
+        message: 'Please verify your email before logging in'
       });
     }
 
@@ -90,7 +122,8 @@ app.post('/api/login', async (req, res) => {
       success: true,
       user: {
         id: data.user.id,
-        email: data.user.email
+        email: data.user.email,
+        emailConfirmed: !!data.user.email_confirmed_at
       },
       token: data.session?.access_token
     });
@@ -121,6 +154,91 @@ app.post('/api/logout', async (req, res) => {
     });
   } catch (error) {
     console.error('Logout error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+});
+
+// Verify email endpoint
+app.post('/api/verify-email', async (req, res) => {
+  try {
+    const { tokenHash, type } = req.body;
+
+    if (!tokenHash || !type) {
+      return res.status(400).json({
+        success: false,
+        message: 'Token hash and type are required'
+      });
+    }
+
+    const { data, error } = await supabase.auth.verifyOtp({
+      token_hash: tokenHash,
+      type: type
+    });
+
+    if (error) {
+      return res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+
+    res.json({
+      success: true,
+      user: {
+        id: data.user.id,
+        email: data.user.email,
+        emailConfirmed: !!data.user.email_confirmed_at
+      },
+      token: data.session?.access_token,
+      message: 'Email verified successfully'
+    });
+  } catch (error) {
+    console.error('Email verification error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+});
+
+// Resend verification email endpoint
+app.post('/api/resend-verification', async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required'
+      });
+    }
+
+    const redirectUrl = `${req.headers.origin || 'http://localhost:4200'}/verify-email`;
+
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email: email,
+      options: {
+        emailRedirectTo: redirectUrl
+      }
+    });
+
+    if (error) {
+      return res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Verification email sent successfully'
+    });
+  } catch (error) {
+    console.error('Resend verification error:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error'
