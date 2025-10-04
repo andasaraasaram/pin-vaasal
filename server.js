@@ -34,7 +34,7 @@ app.post('/api/signup', async (req, res) => {
     }
 
     // Configure email confirmation URL
-    const redirectUrl = `${req.headers.origin || 'http://localhost:4200'}/verify-email`;
+    const redirectUrl = `${req.headers.origin || 'https://veedu-ivory.vercel.app'}/verify-email`;
 
     const { data, error } = await supabase.auth.signUp({
       email,
@@ -216,7 +216,7 @@ app.post('/api/resend-verification', async (req, res) => {
       });
     }
 
-    const redirectUrl = `${req.headers.origin || 'http://localhost:4200'}/verify-email`;
+    const redirectUrl = `${req.headers.origin || 'https://veedu-ivory.vercel.app'}/verify-email`;
 
     const { error } = await supabase.auth.resend({
       type: 'signup',
